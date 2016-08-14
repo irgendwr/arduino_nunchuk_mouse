@@ -21,7 +21,7 @@
 #define MOUSE_SCROLL_SPEED  18
 #define C_ACTION    MOUSE_LEFT
 #define C_ACTION_2 MOUSE_RIGHT
-#define Z_TOGGLE_TIME     500
+#define Z_TOGGLE_TIME      500
 
 #define ACCEL_LEFT     400
 #define ACCEL_RIGHT    600
@@ -36,9 +36,11 @@
 #define ACCEL_BACKWARD_KEY 's'
 #define ACCEL_SHAKE_KEY    ' '
 
-enum direction {none, up, down, left, right, forward, backward};
+//#define ACCEL_Z_KEY KEY_LEFT_SHIFT
+//#define ACCEL_Z_KEY KEY_LEFT_CTRL // use KEY_LEFT_GUI for OSX
+
+enum direction {none, up, down, left, right};
 enum direction prev_joystick_direction = none;
-enum direction prev_accelerometer_direction = none;
 
 unsigned int i = 0;
 unsigned long z_pressed_prev_time = 0;
@@ -68,74 +70,19 @@ void loop() {
   boolean c_pressed = nunchuk.cButton; // read c button
 
   boolean movement = false;
+  boolean no_scroll = false;
   boolean scroll_override = true;
-  
-  if (xReading < X_CENTER - JITTER) { // x down
-    if (!z_pressed) {
-      x = map(xReading + OFFSET, X_MIN, X_CENTER, -MOUSE_SPEED, 0);
-    } else {
-      if (xReading < X_CENTER - 30) {
-        if (prev_joystick_direction != left) {
-          scroll = 1;
-        }
-        scroll_override = false;
-        prev_joystick_direction = left;
-      } else {
-        //prev_joystick_direction = none;
-      }
-    }
-    movement = true;
-  } else if (xReading > X_CENTER + JITTER) { // x up
-    if (!z_pressed) {
-      x = map(xReading + OFFSET, X_CENTER, X_MAX, 0, MOUSE_SPEED);
-    } else {
-      if (xReading > X_CENTER + 30) {
-        if (prev_joystick_direction != right) {
-          scroll = -1;
-        }
-        scroll_override = false;
-        prev_joystick_direction = right;
-      } else {
-        //prev_joystick_direction = none;
-      }
-    }
-    movement = true;
-  } else if (z_pressed) {
-    prev_joystick_direction = none;
-  }
-  
-  if (yReading < Y_CENTER - JITTER) { // y up
-    if (!z_pressed) {
-      y = map(yReading + OFFSET, Y_MIN, Y_CENTER, MOUSE_SPEED, 0);
-    } else {
-      int scroll_devider = map(yReading + OFFSET, Y_MIN, Y_CENTER, MOUSE_SCROLL_SPEED, 0);
-      if (i % (100 / scroll_devider) == 0 && scroll_override) {
-        scroll = -1;
-      }
-    }
-    movement = true;
-  } else if (yReading > Y_CENTER + JITTER) { // y down
-    if (!z_pressed) {
-      y = map(yReading + OFFSET, Y_CENTER, Y_MAX, 0, -MOUSE_SPEED);
-    } else {
-      int scroll_devider = map(yReading + OFFSET, Y_CENTER, Y_MAX, 0, MOUSE_SCROLL_SPEED);
-      if (i % (100 / scroll_devider) == 0 && scroll_override) {
-        scroll = 1;
-      }
-    }
-    movement = true;
-  }
 
   if (z_pressed_prev && !z_pressed) {
     if (millis() - z_pressed_prev_time > Z_TOGGLE_TIME) { // check if button press took too long
-      Serial.println(String("button press took too long (") + (millis() - z_pressed_prev_time) + "ms)");
+      //Serial.println(String("button press took too long (") + (millis() - z_pressed_prev_time) + "ms)");
       z_pressed_counter = 0;  // reset counter
     }
     
     z_pressed_counter ++; // increment counter
     z_pressed_prev_time = millis();
     
-    Serial.println(String("pressed ") + z_pressed_counter + " times");
+    //Serial.println(String("pressed ") + z_pressed_counter + " times");
     
     if (z_pressed_counter == 3) {
       use_accelerometer = !use_accelerometer; // toggle accelerometer mode
@@ -145,9 +92,11 @@ void loop() {
 
       if (use_accelerometer) {
         Keyboard.begin();
+      } else {
+        Keyboard.releaseAll();
       }
       
-      Serial.println(String("accelerometer mode: ") + (use_accelerometer ? "on" : "off"));
+      //Serial.println(String("accelerometer mode: ") + (use_accelerometer ? "on" : "off"));
     }
   }
 
@@ -166,12 +115,33 @@ void loop() {
     if (nunchuk.accelY < ACCEL_BACKWARD) {
       Keyboard.press(ACCEL_BACKWARD_KEY);
       Keyboard.release(ACCEL_FORWARD_KEY);
+      
+/*#ifdef ACCEL_Z_KEY
+      if (z_pressed) {
+        no_scroll = true;
+        Keyboard.press(ACCEL_Z_KEY);
+      } else {
+        Keyboard.release(ACCEL_Z_KEY);
+      }
+#endif*/
     } else if (nunchuk.accelY > ACCEL_FORWARD) {
       Keyboard.press(ACCEL_FORWARD_KEY);
       Keyboard.release(ACCEL_BACKWARD_KEY);
+      
+#ifdef ACCEL_Z_KEY
+      if (z_pressed) {
+        no_scroll = true;
+        Keyboard.press(ACCEL_Z_KEY);
+      } else {
+        Keyboard.release(ACCEL_Z_KEY);
+      }
+#endif
     } else {
       Keyboard.release(ACCEL_BACKWARD_KEY);
       Keyboard.release(ACCEL_FORWARD_KEY);
+#ifdef ACCEL_Z_KEY
+      Keyboard.release(ACCEL_Z_KEY);
+#endif
     }
 
     if (nunchuk.accelZ > ACCEL_SHAKE) {
@@ -179,6 +149,62 @@ void loop() {
     } else {
       Keyboard.release(ACCEL_SHAKE_KEY);
     }
+  }
+
+  if (xReading < X_CENTER - JITTER) { // x down
+    if (z_pressed && !c_pressed && !no_scroll) {
+      if (xReading < X_CENTER - 30) {
+        if (prev_joystick_direction != left) {
+          scroll = 1;
+        }
+        scroll_override = false;
+        prev_joystick_direction = left;
+      } else {
+        //prev_joystick_direction = none;
+      }
+    } else {
+      x = map(xReading + OFFSET, X_MIN, X_CENTER, -MOUSE_SPEED, 0);
+    }
+    movement = true;
+  } else if (xReading > X_CENTER + JITTER) { // x up
+    if (z_pressed && !c_pressed && !no_scroll) {
+      if (xReading > X_CENTER + 30) {
+        if (prev_joystick_direction != right) {
+          scroll = -1;
+        }
+        scroll_override = false;
+        prev_joystick_direction = right;
+      } else {
+        //prev_joystick_direction = none;
+      }
+    } else {
+      x = map(xReading + OFFSET, X_CENTER, X_MAX, 0, MOUSE_SPEED);
+    }
+    movement = true;
+  } else if (z_pressed) {
+    prev_joystick_direction = none;
+  }
+  
+  if (yReading < Y_CENTER - JITTER) { // y up
+    if (z_pressed && !c_pressed && !no_scroll) {
+      int scroll_devider = map(yReading + OFFSET, Y_MIN, Y_CENTER, MOUSE_SCROLL_SPEED, 0);
+      if (i % (100 / scroll_devider) == 0 && scroll_override) {
+        scroll = -1;
+      }
+    } else {
+      y = map(yReading + OFFSET, Y_MIN, Y_CENTER, MOUSE_SPEED, 0);
+    }
+    movement = true;
+  } else if (yReading > Y_CENTER + JITTER) { // y down
+    if (z_pressed && !c_pressed && !no_scroll) {
+      int scroll_devider = map(yReading + OFFSET, Y_CENTER, Y_MAX, 0, MOUSE_SCROLL_SPEED);
+      if (i % (100 / scroll_devider) == 0 && scroll_override) {
+        scroll = 1;
+      }
+    } else {
+      y = map(yReading + OFFSET, Y_CENTER, Y_MAX, 0, -MOUSE_SPEED);
+    }
+    movement = true;
   }
   
   if (movement) {
